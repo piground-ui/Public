@@ -35,18 +35,21 @@ jobs:
           });
 
           (async () => {
-            const db = admin.database();
-            const [dots, meta] = await Promise.all([
-              db.ref('dots').once('value'),
-              db.ref('meta').once('value')
-            ]);
+            const snap = await admin.database().ref('dots').once('value');
+            const dots = {};
+            snap.forEach(function (child) {
+              const v = child.val() || {};
+              const d = { t: v.t };
+              if (v.n) d.n = v.n;
+              dots[child.key] = d;
+            });
             const out = {
               updatedAt: Date.now(),
-              meta: meta.val(),
-              dots: dots.val()
+              count: Object.keys(dots).length,
+              dots: dots
             };
             fs.writeFileSync('snapshot.json', JSON.stringify(out));
-            console.log('snapshot saved');
+            console.log('snapshot saved: ' + out.count);
             process.exit(0);
           })().catch(function (e) {
             console.error(e);
