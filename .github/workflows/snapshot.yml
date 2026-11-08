@@ -1,0 +1,71 @@
+name: Snapshot
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install firebase-admin
+        run: npm install firebase-admin
+
+      - name: Build snapshot.json
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          cat > snapshot.js <<'EOF'
+          const admin = require('firebase-admin');
+          const fs = require('fs');
+
+          admin.initializeApp({
+            credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
+            databaseURL: 'https://pi-ground-4492b-default-rtdb.asia-southeast1.firebasedatabase.app'
+          });
+
+          (async () => {
+            const db = admin.database();
+            const [dots, meta] = await Promise.all([
+              db.ref('dots').once('value'),
+              db.ref('meta').once('value')
+            ]);
+            const out = {
+              updatedAt: Date.now(),
+              meta: meta.val(),
+              dots: dots.val()
+            };
+            fs.writeFileSync('snapshot.json', JSON.stringify(out));
+            console.log('snapshot saved');
+            process.exit(0);
+          })().catch(function (e) {
+            console.error(e);
+            process.exit(1);
+          });
+          EOF
+          node snapshot.js
+
+      - name: Commit snapshot.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshot.json
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "update snapshot"
+            git push
+          fi
+
+      - name: Purge jsDelivr cache
+        run: curl -s "https://purge.jsdelivr.net/gh/piground-ui/Public@main/snapshot.json"
