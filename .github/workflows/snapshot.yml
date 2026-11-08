@@ -36,20 +36,25 @@ jobs:
 
           (async () => {
             const snap = await admin.database().ref('dots').once('value');
-            const dots = {};
+            const rows = [];
+            let last = 0;
             snap.forEach(function (child) {
               const v = child.val() || {};
-              const d = { t: v.t };
-              if (v.n) d.n = v.n;
-              dots[child.key] = d;
+              const seq = parseInt(child.key, 10);
+              if (!seq || !v.t) return;
+              const row = [seq, v.t];
+              if (v.n) row.push(String(v.n).slice(0, 40));
+              rows.push(row);
+              if (seq > last) last = seq;
             });
             const out = {
               updatedAt: Date.now(),
-              count: Object.keys(dots).length,
-              dots: dots
+              last: last,
+              count: rows.length,
+              dots: rows
             };
             fs.writeFileSync('snapshot.json', JSON.stringify(out));
-            console.log('snapshot saved: ' + out.count);
+            console.log('snapshot saved: ' + rows.length + ' dots, last=' + last);
             process.exit(0);
           })().catch(function (e) {
             console.error(e);
